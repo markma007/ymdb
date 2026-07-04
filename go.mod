@@ -1,4 +1,4 @@
-module module github.com/markma007/ymdb
+module github.com/markma007/ymdb
 
 go 1.25.5
 
