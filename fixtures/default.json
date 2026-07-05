@@ -3,20 +3,22 @@
     {
       "group": "app",
       "key": "name",
-      "value": "my_app",
-      "type": "string"
+      "value": "my_app"
     },
     {
       "group": "app",
       "key": "title",
-      "value": "My App",
-      "type": "string"
+      "value": "My App"
     },
     {
       "group": "app",
       "key": "upload_root",
-      "value": "~/{app_name}_uploads",
-      "type": "string"
+      "value": "~/{app_name}_uploads"
+    },
+    {
+      "group": "app",
+      "key": "admin_name",
+      "value": "Administrator"
     }
   ]
 }

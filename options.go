@@ -2,7 +2,6 @@ package ymdb
 
 import (
 	"errors"
-	"fmt"
 	"strings"
 
 	"gorm.io/gorm"
@@ -16,19 +15,9 @@ type OptionModel struct {
 	Group string `json:"group" gorm:"not null;default:app;uniqueIndex:idx_option_group_key,priority:1"`
 	Key   string `json:"key" gorm:"not null;uniqueIndex:idx_option_group_key,priority:2"`
 	Value string `json:"value" gorm:"type:text"`
-	Type  string `json:"type" gorm:"not null;default:string"`
 }
 
-type OptionMeta struct {
-	gorm.Model
-	OptionID uint         `json:"option_id" gorm:"not null;uniqueIndex:idx_option_meta_lookup,priority:1"`
-	Option   *OptionModel `json:"-" gorm:"constraint:OnUpdate:CASCADE,OnDelete:CASCADE"`
-	Key      string       `json:"key" gorm:"not null;uniqueIndex:idx_option_meta_lookup,priority:2"`
-	Value    string       `json:"value" gorm:"type:text"`
-	Type     string       `json:"type" gorm:"not null;default:string"`
-}
-
-func OptionNewE(key, value, group, valueType string) (OptionModel, error) {
+func OptionNewE(key, value, group string) (OptionModel, error) {
 	db, err := defaultDB()
 	if err != nil {
 		return OptionModel{}, err
@@ -38,7 +27,7 @@ func OptionNewE(key, value, group, valueType string) (OptionModel, error) {
 	if key == "" {
 		return OptionModel{}, errors.New("ymdb: option key is required")
 	}
-	opt := OptionModel{Group: group, Key: key, Value: value, Type: normalizeMetaType(valueType)}
+	opt := OptionModel{Group: group, Key: key, Value: value}
 	err = db.Create(&opt).Error
 	return opt, err
 }
@@ -50,8 +39,8 @@ func normalizeOptionGroup(group string) string {
 	}
 	return group
 }
-func OptionNew(key, value, group, valueType string) OptionModel {
-	opt, _ := OptionNewE(key, value, group, valueType)
+func OptionNew(key, value, group string) OptionModel {
+	opt, _ := OptionNewE(key, value, group)
 	return opt
 }
 
@@ -91,7 +80,7 @@ func OptionGet(group, key string) (OptionModel, error) {
 }
 
 // OptionSet creates or replaces one option identified by its group/key pair.
-func OptionSet(group, key, value, valueType string) (OptionModel, error) {
+func OptionSet(group, key, value string) (OptionModel, error) {
 	db, err := defaultDB()
 	if err != nil {
 		return OptionModel{}, err
@@ -101,10 +90,10 @@ func OptionSet(group, key, value, valueType string) (OptionModel, error) {
 	if key == "" {
 		return OptionModel{}, errors.New("ymdb: option key is required")
 	}
-	option := OptionModel{Group: group, Key: key, Value: value, Type: normalizeMetaType(valueType)}
+	option := OptionModel{Group: group, Key: key, Value: value}
 	err = db.Clauses(clause.OnConflict{
 		Columns:   []clause.Column{{Name: "group"}, {Name: "key"}},
-		DoUpdates: clause.Assignments(map[string]any{"value": value, "type": option.Type, "deleted_at": nil, "updated_at": gorm.Expr("CURRENT_TIMESTAMP")}),
+		DoUpdates: clause.Assignments(map[string]any{"value": value, "deleted_at": nil, "updated_at": gorm.Expr("CURRENT_TIMESTAMP")}),
 	}).Create(&option).Error
 	if err != nil {
 		return OptionModel{}, err
@@ -114,19 +103,19 @@ func OptionSet(group, key, value, valueType string) (OptionModel, error) {
 }
 
 // OptionMap returns a group's configuration keyed by option key.
-func OptionMap(group string) (map[string]Meta, error) {
+func OptionMap(group string) (map[string]string, error) {
 	options, err := OptionQueryByGroupE(group)
 	if err != nil {
 		return nil, err
 	}
-	result := make(map[string]Meta, len(options))
+	result := make(map[string]string, len(options))
 	for _, option := range options {
-		result[option.Key] = Meta{Value: option.Value, Type: normalizeMetaType(option.Type)}
+		result[option.Key] = option.Value
 	}
 	return result, nil
 }
 
-// OptionDelete removes one group-scoped option and its metadata.
+// OptionDelete removes one group-scoped option.
 func OptionDelete(group, key string) error {
 	option, err := OptionGet(group, key)
 	if err != nil {
@@ -142,21 +131,7 @@ func OptionDeleteGroup(group string) error {
 		return err
 	}
 	group = normalizeOptionGroup(group)
-	return db.Transaction(func(tx *gorm.DB) error {
-		var ids []uint
-		if err := tx.Model(&OptionModel{}).Where("`group` = ?", group).Pluck("id", &ids).Error; err != nil {
-			return err
-		}
-		if len(ids) > 0 {
-			if err := tx.Where("option_id IN ?", ids).Delete(&OptionMeta{}).Error; err != nil {
-				return err
-			}
-		}
-		if err := tx.Where("`group` = ?", group).Delete(&OptionModel{}).Error; err != nil {
-			return fmt.Errorf("delete option group %q: %w", group, err)
-		}
-		return nil
-	})
+	return db.Unscoped().Where("`group` = ?", group).Delete(&OptionModel{}).Error
 }
 func OptionQueryByGroup(group string) []OptionModel { v, _ := OptionQueryByGroupE(group); return v }
 func OptionGetByID(id int) OptionModel {
@@ -169,7 +144,7 @@ func OptionGetByID(id int) OptionModel {
 	return row
 }
 
-func OptionUpdateByID(id int, key, value, valueType string) {
+func OptionUpdateByID(id int, key, value string) {
 	db, err := defaultDB()
 	if err != nil {
 		return
@@ -180,9 +155,6 @@ func OptionUpdateByID(id int, key, value, valueType string) {
 	}
 	if value != "" {
 		updates["value"] = value
-	}
-	if valueType != "" {
-		updates["type"] = normalizeMetaType(valueType)
 	}
 	if len(updates) > 0 {
 		_ = db.Model(&OptionModel{}).Where("id = ?", id).Updates(updates).Error
@@ -205,55 +177,5 @@ func deleteOption(opt OptionModel) error {
 	if err != nil {
 		return err
 	}
-	return db.Transaction(func(tx *gorm.DB) error {
-		if err := tx.Where("option_id = ?", opt.ID).Delete(&OptionMeta{}).Error; err != nil {
-			return err
-		}
-		return tx.Unscoped().Delete(&opt).Error
-	})
-}
-
-func (o *OptionModel) SetMeta(key, value, valueType string) error {
-	db, err := defaultDB()
-	if err != nil {
-		return err
-	}
-	if o.ID == 0 || key == "" {
-		return errors.New("ymdb: saved option and metadata key are required")
-	}
-	row := OptionMeta{OptionID: o.ID, Key: key, Value: value, Type: normalizeMetaType(valueType)}
-	return db.Clauses(clause.OnConflict{Columns: []clause.Column{{Name: "option_id"}, {Name: "key"}}, DoUpdates: clause.Assignments(map[string]any{"value": value, "type": row.Type, "deleted_at": nil, "updated_at": gorm.Expr("CURRENT_TIMESTAMP")})}).Create(&row).Error
-}
-
-func (o *OptionModel) MetaMap() (map[string]Meta, error) {
-	db, err := defaultDB()
-	if err != nil {
-		return nil, err
-	}
-	var rows []OptionMeta
-	if err = db.Where("option_id = ?", o.ID).Find(&rows).Error; err != nil {
-		return nil, err
-	}
-	out := map[string]Meta{}
-	for _, r := range rows {
-		out[r.Key] = Meta{Value: r.Value, Type: normalizeMetaType(r.Type)}
-	}
-	return out, nil
-}
-
-// MetaValueMap preserves every option metadata row, including repeated keys.
-func (o *OptionModel) MetaValueMap() (map[string][]Meta, error) {
-	db, err := defaultDB()
-	if err != nil {
-		return nil, err
-	}
-	var rows []OptionMeta
-	if err := db.Where("option_id = ?", o.ID).Order("id").Find(&rows).Error; err != nil {
-		return nil, err
-	}
-	result := make(map[string][]Meta)
-	for _, row := range rows {
-		result[row.Key] = append(result[row.Key], Meta{Value: row.Value, Type: normalizeMetaType(row.Type)})
-	}
-	return result, nil
+	return db.Unscoped().Delete(&opt).Error
 }

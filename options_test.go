@@ -26,19 +26,15 @@ func setupTestDB(t *testing.T) {
 
 func TestOptionsLifecycle(t *testing.T) {
 	setupTestDB(t)
-	first, err := OptionNewE("theme", "dark", "app", MetaTypeString)
+	first, err := OptionNewE("theme", "dark", "app")
 	if err != nil {
 		t.Fatalf("create option: %v", err)
 	}
-	if _, err := OptionNewE("theme", "light", "app", MetaTypeString); err == nil {
+	if first.Key != "theme" || first.Value != "dark" {
+		t.Fatalf("unexpected option: %#v", first)
+	}
+	if _, err := OptionNewE("theme", "light", "app"); err == nil {
 		t.Fatal("expected duplicate group/key to fail")
-	}
-	if err := first.SetMeta("source", "user", MetaTypeString); err != nil {
-		t.Fatalf("set option metadata: %v", err)
-	}
-	meta, err := first.MetaMap()
-	if err != nil || meta["source"].Value != "user" {
-		t.Fatalf("unexpected metadata: %#v, %v", meta, err)
 	}
 	groups, err := OptionGroupNamesE()
 	if err != nil || len(groups) != 1 || groups[0] != "app" {
@@ -48,18 +44,18 @@ func TestOptionsLifecycle(t *testing.T) {
 
 func TestOptionsAreIsolatedByGroup(t *testing.T) {
 	setupTestDB(t)
-	appTheme, err := OptionSet("", "theme", "dark", MetaTypeString)
+	appTheme, err := OptionSet("", "theme", "dark")
 	if err != nil {
 		t.Fatal(err)
 	}
-	pluginTheme, err := OptionSet(" plugin.gallery ", "theme", "light", MetaTypeString)
+	pluginTheme, err := OptionSet(" plugin.gallery ", "theme", "light")
 	if err != nil {
 		t.Fatal(err)
 	}
 	if appTheme.Group != DefaultOptionGroup || pluginTheme.Group != "plugin.gallery" {
 		t.Fatalf("groups were not normalized: %q, %q", appTheme.Group, pluginTheme.Group)
 	}
-	if _, err := OptionSet("app", "theme", "system", MetaTypeString); err != nil {
+	if _, err := OptionSet("app", "theme", "system"); err != nil {
 		t.Fatal(err)
 	}
 	app, _ := OptionGet("app", "theme")
@@ -68,7 +64,7 @@ func TestOptionsAreIsolatedByGroup(t *testing.T) {
 		t.Fatalf("group values leaked: app=%q plugin=%q", app.Value, plugin.Value)
 	}
 	config, err := OptionMap("plugin.gallery")
-	if err != nil || len(config) != 1 || config["theme"].Value != "light" {
+	if err != nil || len(config) != 1 || config["theme"] != "light" {
 		t.Fatalf("unexpected group map: %#v, %v", config, err)
 	}
 	groups, _ := OptionGroupNamesE()
@@ -88,13 +84,13 @@ func TestOptionsAreIsolatedByGroup(t *testing.T) {
 
 func TestOptionCanBeRecreatedAfterDelete(t *testing.T) {
 	setupTestDB(t)
-	if _, err := OptionSet("plugin.cache", "enabled", "true", MetaTypeBool); err != nil {
+	if _, err := OptionSet("plugin.cache", "enabled", "true"); err != nil {
 		t.Fatal(err)
 	}
 	if err := OptionDelete("plugin.cache", "enabled"); err != nil {
 		t.Fatal(err)
 	}
-	recreated, err := OptionSet("plugin.cache", "enabled", "false", MetaTypeBool)
+	recreated, err := OptionSet("plugin.cache", "enabled", "false")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -121,13 +117,37 @@ func TestSQLiteConfiguration(t *testing.T) {
 	}
 }
 
-func TestMetadataForeignKeysAndSetUniqueness(t *testing.T) {
+func TestOpenRemovesLegacyOptionTypeColumn(t *testing.T) {
+	path := t.TempDir() + "/legacy.sqlite"
+	manager, err := Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := manager.DB.Exec("ALTER TABLE option_models ADD COLUMN type TEXT NOT NULL DEFAULT 'string'").Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := manager.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	manager, err = Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = manager.Close() })
+	if manager.DB.Migrator().HasColumn("option_models", "type") {
+		t.Fatal("legacy option type column remains after migration")
+	}
+	var option OptionModel
+	if err := manager.DB.Where("`group` = ? AND `key` = ?", "app", "name").First(&option).Error; err != nil {
+		t.Fatalf("options were not preserved: %v", err)
+	}
+}
+
+func TestPostAndUserMetadataForeignKeysAndSetUniqueness(t *testing.T) {
 	setupTestDB(t)
 	if err := DB.Create(&UserMeta{UserID: 999999, Key: "orphan", Value: "x", Type: MetaTypeString}).Error; err == nil {
 		t.Fatal("expected orphan user metadata to fail")
-	}
-	if err := DB.Create(&OptionMeta{OptionID: 999999, Key: "orphan", Value: "x", Type: MetaTypeString}).Error; err == nil {
-		t.Fatal("expected orphan option metadata to fail")
 	}
 	if err := DB.Create(&PostMeta{PostID: 999999, Key: "orphan", Value: "x", Type: MetaTypeString}).Error; err == nil {
 		t.Fatal("expected orphan post metadata to fail")

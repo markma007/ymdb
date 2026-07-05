@@ -30,11 +30,9 @@ type postJSON struct {
 
 type optionJSON struct {
 	resourceJSON
-	Group string          `json:"group"`
-	Key   string          `json:"key"`
-	Value string          `json:"value"`
-	Type  string          `json:"type"`
-	Meta  map[string]Meta `json:"meta"`
+	Group string `json:"group"`
+	Key   string `json:"key"`
+	Value string `json:"value"`
 }
 
 type userJSON struct {
@@ -47,11 +45,6 @@ type userJSON struct {
 type deepPostJSON struct {
 	Post postJSON          `json:"post"`
 	Meta map[string][]Meta `json:"meta"`
-}
-
-type deepOptionJSON struct {
-	Option optionJSON        `json:"option"`
-	Meta   map[string][]Meta `json:"meta"`
 }
 
 type deepUserJSON struct {
@@ -121,56 +114,20 @@ func ToDeepJsonString(id int) string {
 	return result
 }
 
-// JSONBytes returns an option and its option metadata. Group is always present
-// because it is part of the option's identity together with Key.
+// JSONBytes returns an option. Group is always present because it is part of
+// the option's identity together with Key.
 func (o *OptionModel) JSONBytes() ([]byte, error) {
 	if o == nil {
 		return nil, errors.New("ymdb: cannot encode a nil option")
 	}
-	meta, err := o.MetaMap()
-	if err != nil {
-		return nil, err
-	}
 	return json.Marshal(optionJSON{
 		resourceJSON: resource(o.ID, o.CreatedAt, o.UpdatedAt),
-		Group:        o.Group, Key: o.Key, Value: o.Value, Type: normalizeMetaType(o.Type), Meta: meta,
+		Group:        o.Group, Key: o.Key, Value: o.Value,
 	})
 }
 
 func (o *OptionModel) ToJSON() (string, error) { b, err := o.JSONBytes(); return string(b), err }
 func (o *OptionModel) ToJson() (string, error) { return o.ToJSON() }
-
-// ToDeepJSON returns an option plus every associated option metadata value.
-func (o *OptionModel) ToDeepJSON() (string, error) {
-	if o == nil {
-		return "", errors.New("ymdb: cannot encode a nil option")
-	}
-	meta, err := o.MetaValueMap()
-	if err != nil {
-		return "", err
-	}
-	payload := optionJSON{
-		resourceJSON: resource(o.ID, o.CreatedAt, o.UpdatedAt),
-		Group:        o.Group, Key: o.Key, Value: o.Value, Type: normalizeMetaType(o.Type),
-	}
-	b, err := json.Marshal(deepOptionJSON{Option: payload, Meta: meta})
-	return string(b), err
-}
-
-func (o *OptionModel) ToDeepJson() (string, error) { return o.ToDeepJSON() }
-
-func OptionToDeepJsonString(id int) string {
-	db, err := defaultDB()
-	if err != nil {
-		return ""
-	}
-	var option OptionModel
-	if err := db.First(&option, id).Error; err != nil {
-		return ""
-	}
-	result, _ := option.ToDeepJSON()
-	return result
-}
 
 // JSONBytes deliberately excludes the user's password hash.
 func (u *User) JSONBytes() ([]byte, error) {
@@ -247,22 +204,10 @@ func PostsToJSON(posts []Post) (string, error) {
 }
 
 func OptionsToJSON(options []OptionModel) (string, error) {
-	ids := make([]uint, len(options))
-	for i := range options {
-		ids[i] = options[i].ID
-	}
-	meta, err := bulkOptionMeta(ids)
-	if err != nil {
-		return "", err
-	}
 	payload := make([]optionJSON, 0, len(options))
 	for i := range options {
 		o := &options[i]
-		optionMeta := meta[o.ID]
-		if optionMeta == nil {
-			optionMeta = map[string]Meta{}
-		}
-		payload = append(payload, optionJSON{resourceJSON: resource(o.ID, o.CreatedAt, o.UpdatedAt), Group: o.Group, Key: o.Key, Value: o.Value, Type: normalizeMetaType(o.Type), Meta: optionMeta})
+		payload = append(payload, optionJSON{resourceJSON: resource(o.ID, o.CreatedAt, o.UpdatedAt), Group: o.Group, Key: o.Key, Value: o.Value})
 	}
 	b, err := json.Marshal(payload)
 	return string(b), err
@@ -308,28 +253,6 @@ func bulkPostMeta(ids []uint) (map[uint]map[string]Meta, error) {
 			result[row.PostID] = map[string]Meta{}
 		}
 		result[row.PostID][row.Key] = Meta{Value: row.Value, Type: normalizeMetaType(row.Type)}
-	}
-	return result, nil
-}
-
-func bulkOptionMeta(ids []uint) (map[uint]map[string]Meta, error) {
-	result := map[uint]map[string]Meta{}
-	if len(ids) == 0 {
-		return result, nil
-	}
-	db, err := defaultDB()
-	if err != nil {
-		return nil, err
-	}
-	var rows []OptionMeta
-	if err := db.Where("option_id IN ?", ids).Find(&rows).Error; err != nil {
-		return nil, err
-	}
-	for _, row := range rows {
-		if result[row.OptionID] == nil {
-			result[row.OptionID] = map[string]Meta{}
-		}
-		result[row.OptionID][row.Key] = Meta{Value: row.Value, Type: normalizeMetaType(row.Type)}
 	}
 	return result, nil
 }

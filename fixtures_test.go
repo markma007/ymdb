@@ -24,7 +24,7 @@ func TestDefaultFixturesInstalledAndNotOverwritten(t *testing.T) {
 	if name.Value != "my_app" || title.Value != "My App" || root.Value != "~/{app_name}_uploads" {
 		t.Fatalf("wrong defaults: %#v %#v %#v", name, title, root)
 	}
-	if _, err := OptionSet("app", "name", "custom_app", MetaTypeString); err != nil {
+	if _, err := OptionSet("app", "name", "custom_app"); err != nil {
 		t.Fatal(err)
 	}
 	if err := InstallDefaultFixtures(DB); err != nil {
@@ -38,15 +38,15 @@ func TestDefaultFixturesInstalledAndNotOverwritten(t *testing.T) {
 
 func TestCustomFixturesAndUploadRootExpansion(t *testing.T) {
 	setupTestDB(t)
-	custom := `{"options":[{"group":"plugin.search","key":"enabled","value":"true","type":"bool"}]}`
+	custom := `{"options":[{"group":"plugin.search","key":"enabled","value":"true"}]}`
 	if err := InstallFixtures(DB, strings.NewReader(custom)); err != nil {
 		t.Fatal(err)
 	}
 	option, err := OptionGet("plugin.search", "enabled")
-	if err != nil || option.Type != MetaTypeBool {
+	if err != nil || option.Value != "true" {
 		t.Fatalf("custom fixture=%#v err=%v", option, err)
 	}
-	if _, err := OptionSet("app", "name", "fixture app", MetaTypeString); err != nil {
+	if _, err := OptionSet("app", "name", "fixture app"); err != nil {
 		t.Fatal(err)
 	}
 	root, err := ConfiguredUploadRoot()

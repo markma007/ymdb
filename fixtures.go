@@ -22,7 +22,6 @@ type OptionFixture struct {
 	Group string `json:"group"`
 	Key   string `json:"key"`
 	Value string `json:"value"`
-	Type  string `json:"type"`
 }
 
 // InstallDefaultFixtures installs embedded application defaults without
@@ -66,7 +65,7 @@ func InstallFixtures(db *gorm.DB, reader io.Reader) error {
 			if !errors.Is(err, gorm.ErrRecordNotFound) {
 				return err
 			}
-			option := OptionModel{Group: group, Key: key, Value: fixture.Value, Type: normalizeMetaType(fixture.Type)}
+			option := OptionModel{Group: group, Key: key, Value: fixture.Value}
 			if err := tx.Create(&option).Error; err != nil {
 				return fmt.Errorf("ymdb: install fixture %s/%s: %w", group, key, err)
 			}

@@ -72,11 +72,8 @@ func TestPostToDeepJSONPreservesRepeatedMeta(t *testing.T) {
 
 func TestOptionAndUserToJSON(t *testing.T) {
 	setupTestDB(t)
-	option, err := OptionSet("plugin.gallery", "enabled", "true", MetaTypeBool)
+	option, err := OptionSet("plugin.gallery", "enabled", "true")
 	if err != nil {
-		t.Fatal(err)
-	}
-	if err := option.SetMeta("description", "Gallery switch", MetaTypeString); err != nil {
 		t.Fatal(err)
 	}
 	optionValue, err := option.ToJson()
@@ -86,6 +83,12 @@ func TestOptionAndUserToJSON(t *testing.T) {
 	optionJSON := decodeJSON(t, optionValue)
 	if optionJSON["group"] != "plugin.gallery" || optionJSON["key"] != "enabled" {
 		t.Fatalf("group identity missing: %s", optionValue)
+	}
+	if _, exists := optionJSON["meta"]; exists {
+		t.Fatalf("option metadata leaked into JSON: %s", optionValue)
+	}
+	if _, exists := optionJSON["type"]; exists {
+		t.Fatalf("option type leaked into JSON: %s", optionValue)
 	}
 
 	user, err := CreateUser("alex", "alex@example.com", "super-secret-hash")
@@ -108,34 +111,8 @@ func TestOptionAndUserToJSON(t *testing.T) {
 	}
 }
 
-func TestOptionAndUserDeepJSON(t *testing.T) {
+func TestUserDeepJSON(t *testing.T) {
 	setupTestDB(t)
-	option, err := OptionSet("plugin.gallery", "enabled", "true", MetaTypeBool)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := option.SetMeta("environment", "dev", MetaTypeString); err != nil {
-		t.Fatal(err)
-	}
-	if err := option.SetMeta("environment", "test", MetaTypeString); err != nil {
-		t.Fatal(err)
-	}
-	value, err := option.ToDeepJSON()
-	if err != nil {
-		t.Fatal(err)
-	}
-	decoded := decodeJSON(t, value)
-	if decoded["option"].(map[string]any)["group"] != "plugin.gallery" {
-		t.Fatalf("option group missing: %s", value)
-	}
-	environments := decoded["meta"].(map[string]any)["environment"].([]any)
-	if len(environments) != 1 || environments[0].(map[string]any)["value"] != "test" {
-		t.Fatalf("option metadata lost: %s", value)
-	}
-	if OptionToDeepJsonString(int(option.ID)) == "" {
-		t.Fatal("option ID helper returned empty JSON")
-	}
-
 	user, err := CreateUser("sam", "sam@example.com", "hidden-hash")
 	if err != nil {
 		t.Fatal(err)
@@ -146,11 +123,11 @@ func TestOptionAndUserDeepJSON(t *testing.T) {
 	if err := user.SetMeta("role", "reviewer", MetaTypeString); err != nil {
 		t.Fatal(err)
 	}
-	value, err = user.ToDeepJSON()
+	value, err := user.ToDeepJSON()
 	if err != nil {
 		t.Fatal(err)
 	}
-	decoded = decodeJSON(t, value)
+	decoded := decodeJSON(t, value)
 	roles := decoded["meta"].(map[string]any)["role"].([]any)
 	if len(roles) != 1 || roles[0].(map[string]any)["value"] != "reviewer" {
 		t.Fatalf("user metadata lost: %s", value)

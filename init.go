@@ -46,10 +46,18 @@ func Open(dbFilepath string) (*DBManager, error) {
 	}
 	if err := db.AutoMigrate(
 		&Post{}, &PostMeta{},
-		&OptionModel{}, &OptionMeta{},
+		&OptionModel{},
 		&User{}, &UserMeta{},
 	); err != nil {
 		return nil, fmt.Errorf("ymdb: migrate database: %w", err)
+	}
+	// AutoMigrate does not remove obsolete columns. Drop the former option type
+	// column explicitly so upgraded databases match the current string-only model.
+	if db.Migrator().HasColumn("option_models", "type") {
+		if err := db.Exec("ALTER TABLE `option_models` DROP COLUMN `type`").Error; err != nil {
+			_ = sqlDB.Close()
+			return nil, fmt.Errorf("ymdb: remove option type column: %w", err)
+		}
 	}
 	if err := InstallDefaultFixtures(db); err != nil {
 		_ = sqlDB.Close()

@@ -190,7 +190,7 @@ func SetUploadRoot(root string) (OptionModel, error) {
 	if root == "" {
 		return OptionModel{}, errors.New("ymdb: upload root is required")
 	}
-	return OptionSet(UploadOptionGroup, UploadRootOption, root, MetaTypeString)
+	return OptionSet(UploadOptionGroup, UploadRootOption, root)
 }
 
 func saveUploadMeta(post *Post, root, storedName, contentType string, size int64, digest string) error {

@@ -1,6 +1,6 @@
 # YMDB Library API
 
-YMDB is a small, WordPress-inspired data library for Go. It provides posts, typed post metadata, grouped application options, users, tree navigation, JSON response helpers, fixtures, and filesystem-backed attachment uploads on SQLite.
+YMDB is a small, WordPress-inspired data library for Go. It provides posts, typed post and user metadata, grouped application options, users, tree navigation, JSON response helpers, fixtures, and filesystem-backed attachment uploads on SQLite.
 
 ## Contents
 
@@ -95,9 +95,9 @@ YMDB embeds `ymdb/fixtures/default.json` and installs missing options during dat
 ```json
 {
   "options": [
-    {"group": "app", "key": "name", "value": "my_app", "type": "string"},
-    {"group": "app", "key": "title", "value": "My App", "type": "string"},
-    {"group": "app", "key": "upload_root", "value": "~/{app_name}_uploads", "type": "string"}
+    {"group": "app", "key": "name", "value": "my_app"},
+    {"group": "app", "key": "title", "value": "My App"},
+    {"group": "app", "key": "upload_root", "value": "~/{app_name}_uploads"}
   ]
 }
 ```
@@ -126,8 +126,7 @@ Fixture format:
     {
       "group": "plugin.search",
       "key": "enabled",
-      "value": "true",
-      "type": "bool"
+      "value": "true"
     }
   ]
 }
@@ -395,7 +394,6 @@ option, err := ymdb.OptionSet(
     "app",
     "title",
     "My Application",
-    ymdb.MetaTypeString,
 )
 
 option, err = ymdb.OptionGet("app", "title")
@@ -404,8 +402,8 @@ option, err = ymdb.OptionGet("app", "title")
 The same key can exist independently in different groups:
 
 ```go
-_, _ = ymdb.OptionSet("app", "enabled", "true", ymdb.MetaTypeBool)
-_, _ = ymdb.OptionSet("plugin.search", "enabled", "false", ymdb.MetaTypeBool)
+_, _ = ymdb.OptionSet("app", "enabled", "true")
+_, _ = ymdb.OptionSet("plugin.search", "enabled", "false")
 ```
 
 ### Read groups
@@ -416,22 +414,15 @@ options, err := ymdb.OptionQueryByGroupE("plugin.search")
 config, err := ymdb.OptionMap("plugin.search")
 ```
 
+Option values are stored as strings. Applications are responsible for parsing
+values such as booleans or numbers.
+
 ### Delete
 
 ```go
 err := ymdb.OptionDelete("plugin.search", "enabled")
 err = ymdb.OptionDeleteGroup("plugin.search")
 ```
-
-### Option metadata
-
-```go
-err := option.SetMeta("description", "Application title", ymdb.MetaTypeString)
-meta, err := option.MetaMap()
-allMeta, err := option.MetaValueMap()
-```
-
-Option metadata uses set semantics: one current row per option/key pair.
 
 ## Users
 
@@ -550,7 +541,8 @@ text, err = option.ToJSON()
 text, err = user.ToJSON()
 ```
 
-These methods include a one-value-per-key `meta` object.
+Post and user JSON include a one-value-per-key `meta` object. Option JSON contains
+only the option resource fields.
 
 ### Deep resources
 
@@ -558,7 +550,6 @@ Deep JSON preserves all post metadata values, including repeated keys:
 
 ```go
 text, err := post.ToDeepJSON()
-text, err = option.ToDeepJSON()
 text, err = user.ToDeepJSON()
 ```
 
@@ -582,7 +573,8 @@ Example shape:
 
 ### Collections
 
-Use the bulk serializers for HTTP list responses. They load metadata in one query and avoid N+1 behavior:
+Use the bulk serializers for HTTP list responses. Post and user serializers load
+metadata in one query and avoid N+1 behavior:
 
 ```go
 posts, err := ymdb.QueryPostsE("post_type = ?", "article")
