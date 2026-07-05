@@ -10,20 +10,22 @@ import (
 )
 
 const (
-	PostFormatText = "text"
-	PostFormatJSON = "json"
-	PostFormatCSV  = "csv"
+	PostFormatText    = "text"
+	PostFormatJSON    = "json"
+	PostFormatCSV     = "csv"
+	PostFormatTabular = "tabular" // PostFormatTabular stores comma-separated cells and semicolon-separated rows.
 )
 
 const (
 	PostMimeText     = "text"
 	PostMimeHTML     = "html"
 	PostMimeMarkdown = "markdown"
+	PostMimeXML      = "xml"
 )
 
 func validPostFormat(format string) bool {
 	switch format {
-	case PostFormatText, PostFormatJSON, PostFormatCSV:
+	case PostFormatText, PostFormatJSON, PostFormatCSV, PostFormatTabular:
 		return true
 	default:
 		return false
@@ -48,6 +50,11 @@ func (p *Post) Validate() error {
 		reader := csv.NewReader(strings.NewReader(p.Data))
 		if _, err := reader.ReadAll(); err != nil {
 			return fmt.Errorf("ymdb: post data is not valid CSV: %w", err)
+		}
+	}
+	if p.Format == PostFormatTabular {
+		if _, err := decodeTabular(p.Data); err != nil {
+			return fmt.Errorf("ymdb: post data is not valid tabular data: %w", err)
 		}
 	}
 	return nil
@@ -102,6 +109,67 @@ func (p *Post) DecodeCSVData() ([][]string, error) {
 	records, err := csv.NewReader(strings.NewReader(p.Data)).ReadAll()
 	if err != nil && !errors.Is(err, io.EOF) {
 		return nil, fmt.Errorf("ymdb: decode post CSV data: %w", err)
+	}
+	return records, nil
+}
+
+// SetTabularData stores records as comma-separated cells and
+// semicolon-separated rows, for example "a1,a2;b1,b2". Delimiters and quotes
+// inside cells are escaped using CSV-style double quoting.
+func (p *Post) SetTabularData(records [][]string) {
+	rows := make([]string, len(records))
+	for i, record := range records {
+		cells := make([]string, len(record))
+		for j, cell := range record {
+			cells[j] = encodeTabularCell(cell)
+		}
+		rows[i] = strings.Join(cells, ",")
+	}
+	p.Data, p.Format = strings.Join(rows, ";"), PostFormatTabular
+}
+
+// DecodeTabularData decodes comma-separated cells and semicolon-separated rows.
+func (p *Post) DecodeTabularData() ([][]string, error) {
+	if p.Format != PostFormatTabular {
+		return nil, fmt.Errorf("ymdb: post data format is %q, not tabular", p.Format)
+	}
+	return decodeTabular(p.Data)
+}
+
+func encodeTabularCell(cell string) string {
+	if !strings.ContainsAny(cell, ",;\"\r\n") {
+		return cell
+	}
+	return `"` + strings.ReplaceAll(cell, `"`, `""`) + `"`
+}
+
+func decodeTabular(data string) ([][]string, error) {
+	if data == "" {
+		return [][]string{}, nil
+	}
+	var csvData strings.Builder
+	inQuotes := false
+	for i := 0; i < len(data); i++ {
+		char := data[i]
+		if char == '"' {
+			csvData.WriteByte(char)
+			if inQuotes && i+1 < len(data) && data[i+1] == '"' {
+				csvData.WriteByte(data[i+1])
+				i++
+				continue
+			}
+			inQuotes = !inQuotes
+			continue
+		}
+		if char == ';' && !inQuotes {
+			csvData.WriteByte('\n')
+		} else {
+			csvData.WriteByte(char)
+		}
+	}
+	records, err := csv.NewReader(strings.NewReader(csvData.String())).ReadAll()
+	if err != nil && !errors.Is(err, io.EOF) {
+		return nil, fmt.Errorf("ymdb: decode post tabular data: %w", err)
 	}
 	return records, nil
 }

@@ -201,6 +201,7 @@ type Post struct {
 ymdb.PostMimeText
 ymdb.PostMimeHTML
 ymdb.PostMimeMarkdown
+ymdb.PostMimeXML
 ```
 
 Other non-empty content MIME labels may also be used.
@@ -211,6 +212,7 @@ Other non-empty content MIME labels may also be used.
 ymdb.PostFormatText
 ymdb.PostFormatJSON
 ymdb.PostFormatCSV
+ymdb.PostFormatTabular
 ```
 
 Use the encoding helpers instead of manually coordinating `Data` and `Format`:
@@ -219,12 +221,18 @@ Use the encoding helpers instead of manually coordinating `Data` and `Format`:
 post.SetTextData("plain value")
 err := post.SetJSONData(map[string]any{"enabled": true})
 err = post.SetCSVData([][]string{{"name", "score"}, {"Alex", "10"}})
+post.SetTabularData([][]string{{"a1", "a2", "a3"}, {"b1", "b2", "b3"}})
 
 var document map[string]any
 err = post.DecodeJSONData(&document)
 
 records, err := post.DecodeCSVData()
+tabularRecords, err := post.DecodeTabularData()
 ```
+
+Tabular data uses commas between cells and semicolons between rows, such as
+`a1,a2,a3;b1,b2,b3;c1,c2,c3`. Cells containing delimiters or quotes use
+CSV-style double quoting.
 
 Set content and its representation together:
 
@@ -553,15 +561,22 @@ text, err := post.ToDeepJSON()
 text, err = user.ToDeepJSON()
 ```
 
+For quick visual inspection during development, dump a model as four-space
+indented JSON to the console:
+
+```go
+err := post.Dump()   // deep JSON, including every metadata value
+err = option.Dump() // option JSON
+err = user.Dump()   // deep JSON without the password hash
+```
+
 Example shape:
 
 ```json
 {
-  "post": {
-    "id": 1,
-    "post_type": "article",
-    "title": "Hello"
-  },
+  "id": 1,
+  "post_type": "article",
+  "title": "Hello",
   "meta": {
     "tag": [
       {"value": "go", "type": "string"},

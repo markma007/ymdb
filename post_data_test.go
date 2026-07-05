@@ -14,6 +14,12 @@ func TestPostContentAndDataFormats(t *testing.T) {
 	if err := post.SetContent("# Heading", PostMimeMarkdown); err != nil {
 		t.Fatal(err)
 	}
+	if err := post.SetContent("<book><title>Blue Sky</title></book>", PostMimeXML); err != nil {
+		t.Fatal(err)
+	}
+	if post.Mime != PostMimeXML {
+		t.Fatalf("XML content MIME=%q", post.Mime)
+	}
 	input := map[string]any{"name": "YMDB", "count": float64(2)}
 	if err := post.SetJSONData(input); err != nil {
 		t.Fatal(err)
@@ -39,6 +45,21 @@ func TestPostContentAndDataFormats(t *testing.T) {
 	if !reflect.DeepEqual(decodedCSV, records) {
 		t.Fatalf("decoded CSV=%#v", decodedCSV)
 	}
+	tabularRecords := [][]string{{"a1", "a2", "a3"}, {"b1", "b2", "b3"}, {"c1", "c2", "c3"}}
+	post.SetTabularData(tabularRecords)
+	if post.Format != PostFormatTabular || post.Data != "a1,a2,a3;b1,b2,b3;c1,c2,c3" {
+		t.Fatalf("tabular data=%#v", post)
+	}
+	decodedTabular, err := post.DecodeTabularData()
+	if err != nil || !reflect.DeepEqual(decodedTabular, tabularRecords) {
+		t.Fatalf("decoded tabular=%#v err=%v", decodedTabular, err)
+	}
+	escapedRecords := [][]string{{"comma,value", "semicolon;value", `quoted"value`}}
+	post.SetTabularData(escapedRecords)
+	decodedTabular, err = post.DecodeTabularData()
+	if err != nil || !reflect.DeepEqual(decodedTabular, escapedRecords) {
+		t.Fatalf("decoded escaped tabular=%#v data=%q err=%v", decodedTabular, post.Data, err)
+	}
 	post.SetTextData("plain")
 	if post.Format != PostFormatText || post.Data != "plain" {
 		t.Fatalf("text data=%#v", post)
@@ -59,5 +80,10 @@ func TestPostRejectsInvalidDataFormat(t *testing.T) {
 	post.Data = "not-json"
 	if err := post.SaveE(); err == nil {
 		t.Fatal("expected invalid JSON error")
+	}
+	post.Format = PostFormatTabular
+	post.Data = `"unclosed`
+	if err := post.SaveE(); err == nil {
+		t.Fatal("expected invalid tabular data error")
 	}
 }

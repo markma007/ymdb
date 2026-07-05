@@ -1,11 +1,28 @@
 package ymdb
 
 import (
+	"bytes"
+	"encoding/json"
 	"fmt"
 	"sort"
 	"strconv"
 	"strings"
 )
+
+// PrettyPrintJSON formats a JSON string using indentSpaces spaces per nesting
+// level. It returns an error for invalid JSON or a negative indentation width.
+func PrettyPrintJSON(jsonString string, indentSpaces int) (string, error) {
+	if indentSpaces < 0 {
+		return "", fmt.Errorf("indentation width cannot be negative: %d", indentSpaces)
+	}
+
+	var formatted bytes.Buffer
+	indent := strings.Repeat(" ", indentSpaces)
+	if err := json.Indent(&formatted, []byte(jsonString), "", indent); err != nil {
+		return "", fmt.Errorf("invalid JSON: %w", err)
+	}
+	return formatted.String(), nil
+}
 
 func CommaSeparatedNumberStringToSlice(s string) ([]int, error) {
 	// 1. Split the string into a slice of strings using the comma delimiter

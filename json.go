@@ -3,6 +3,7 @@ package ymdb
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"time"
 )
 
@@ -14,18 +15,18 @@ type resourceJSON struct {
 
 type postJSON struct {
 	resourceJSON
-	PostType string          `json:"post_type"`
-	Title    string          `json:"title"`
-	Slug     string          `json:"slug"`
-	Content  string          `json:"content"`
-	Mime     string          `json:"mime"`
-	Data     string          `json:"data"`
-	Format   string          `json:"format"`
-	ParentID *uint           `json:"parent_id,omitempty"`
-	Position int             `json:"position"`
-	Revision int             `json:"revision"`
-	Status   string          `json:"status"`
-	Meta     map[string]Meta `json:"meta"`
+	PostType string `json:"post_type"`
+	Title    string `json:"title"`
+	Slug     string `json:"slug"`
+	Content  string `json:"content"`
+	Mime     string `json:"mime"`
+	Data     string `json:"data"`
+	Format   string `json:"format"`
+	ParentID *uint  `json:"parent_id,omitempty"`
+	Position int    `json:"position"`
+	Revision int    `json:"revision"`
+	Status   string `json:"status"`
+	Meta     any    `json:"meta"`
 }
 
 type optionJSON struct {
@@ -40,11 +41,6 @@ type userJSON struct {
 	Username string          `json:"username"`
 	Email    string          `json:"email"`
 	Meta     map[string]Meta `json:"meta"`
-}
-
-type deepPostJSON struct {
-	Post postJSON          `json:"post"`
-	Meta map[string][]Meta `json:"meta"`
 }
 
 type deepUserJSON struct {
@@ -87,17 +83,30 @@ func (p *Post) ToDeepJSON() (string, error) {
 	if err != nil {
 		return "", err
 	}
+	if meta == nil {
+		meta = map[string][]Meta{}
+	}
 	payload := postJSON{
 		resourceJSON: resource(p.ID, p.CreatedAt, p.UpdatedAt),
 		PostType:     p.PostType, Title: p.Title, Slug: p.Slug, Content: p.Content,
 		Mime: p.Mime, Data: p.Data, Format: p.Format, ParentID: p.ParentID,
-		Position: p.Position, Revision: p.Revision, Status: p.Status,
+		Position: p.Position, Revision: p.Revision, Status: p.Status, Meta: meta,
 	}
-	b, err := json.Marshal(deepPostJSON{Post: payload, Meta: meta})
+	b, err := json.Marshal(payload)
 	return string(b), err
 }
 
 func (p *Post) ToDeepJson() (string, error) { return p.ToDeepJSON() }
+
+// Dump pretty-prints the post and all of its metadata to standard output.
+// It is intended for visual inspection during application development.
+func (p *Post) Dump() error {
+	js, err := p.ToDeepJSON()
+	if err != nil {
+		return err
+	}
+	return dumpJSON(js)
+}
 
 // ToDeepJsonString retains the original ID-based helper. Prefer the Post
 // method when the instance is already loaded so errors can be handled.
@@ -128,6 +137,16 @@ func (o *OptionModel) JSONBytes() ([]byte, error) {
 
 func (o *OptionModel) ToJSON() (string, error) { b, err := o.JSONBytes(); return string(b), err }
 func (o *OptionModel) ToJson() (string, error) { return o.ToJSON() }
+
+// Dump pretty-prints the option to standard output. It is intended for visual
+// inspection during application development.
+func (o *OptionModel) Dump() error {
+	js, err := o.ToJSON()
+	if err != nil {
+		return err
+	}
+	return dumpJSON(js)
+}
 
 // JSONBytes deliberately excludes the user's password hash.
 func (u *User) JSONBytes() ([]byte, error) {
@@ -165,6 +184,27 @@ func (u *User) ToDeepJSON() (string, error) {
 }
 
 func (u *User) ToDeepJson() (string, error) { return u.ToDeepJSON() }
+
+// Dump pretty-prints the user and all of its metadata to standard output.
+// The password hash is never included.
+func (u *User) Dump() error {
+	js, err := u.ToDeepJSON()
+	if err != nil {
+		return err
+	}
+	return dumpJSON(js)
+}
+
+func dumpJSON(js string) error {
+	formatted, err := PrettyPrintJSON(js, 4)
+	if err != nil {
+		return err
+	}
+	if _, err := fmt.Println(formatted); err != nil {
+		return fmt.Errorf("ymdb: print JSON: %w", err)
+	}
+	return nil
+}
 
 func UserToDeepJsonString(id int) string {
 	db, err := defaultDB()

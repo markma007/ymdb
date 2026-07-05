@@ -2,9 +2,38 @@ package ymdb
 
 import (
 	"encoding/json"
+	"io"
+	"os"
 	"strings"
 	"testing"
 )
+
+func captureStdout(t *testing.T, fn func() error) string {
+	t.Helper()
+	reader, writer, err := os.Pipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	original := os.Stdout
+	os.Stdout = writer
+	defer func() { os.Stdout = original }()
+
+	callErr := fn()
+	if err := writer.Close(); err != nil {
+		t.Fatal(err)
+	}
+	output, readErr := io.ReadAll(reader)
+	if err := reader.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if callErr != nil {
+		t.Fatal(callErr)
+	}
+	if readErr != nil {
+		t.Fatal(readErr)
+	}
+	return string(output)
+}
 
 func decodeJSON(t *testing.T, value string) map[string]any {
 	t.Helper()
@@ -56,8 +85,7 @@ func TestPostToDeepJSONPreservesRepeatedMeta(t *testing.T) {
 		t.Fatal(err)
 	}
 	decoded := decodeJSON(t, value)
-	post := decoded["post"].(map[string]any)
-	if post["id"].(float64) != float64(p.ID) {
+	if decoded["id"].(float64) != float64(p.ID) {
 		t.Fatalf("post missing from deep JSON: %s", value)
 	}
 	meta := decoded["meta"].(map[string]any)
@@ -67,6 +95,23 @@ func TestPostToDeepJSONPreservesRepeatedMeta(t *testing.T) {
 	}
 	if byID := ToDeepJsonString(int(p.ID)); byID == "" {
 		t.Fatal("ID-based compatibility helper returned empty JSON")
+	}
+	if _, exists := decoded["post"]; exists {
+		t.Fatalf("post wrapper remains in deep JSON: %s", value)
+	}
+}
+
+func TestPostToDeepJSONUsesEmptyEmbeddedMetaObject(t *testing.T) {
+	setupTestDB(t)
+	p := NewPost("article")
+	value, err := p.ToDeepJSON()
+	if err != nil {
+		t.Fatal(err)
+	}
+	post := decodeJSON(t, value)
+	meta, ok := post["meta"].(map[string]any)
+	if !ok || len(meta) != 0 {
+		t.Fatalf("expected embedded empty metadata object: %s", value)
 	}
 }
 
@@ -137,6 +182,39 @@ func TestUserDeepJSON(t *testing.T) {
 	}
 	if UserToDeepJsonString(int(user.ID)) == "" {
 		t.Fatal("user ID helper returned empty JSON")
+	}
+}
+
+func TestDumpPrettyPrintsModelJSON(t *testing.T) {
+	setupTestDB(t)
+	post := NewPost("article")
+	if err := post.SetMeta("tag", "go", MetaTypeString); err != nil {
+		t.Fatal(err)
+	}
+	postOutput := captureStdout(t, post.Dump)
+	if !strings.Contains(postOutput, "\n    \"post_type\": \"article\"") || !strings.Contains(postOutput, "\"tag\": [") || strings.Contains(postOutput, "\"post\": {") {
+		t.Fatalf("post dump is not deep, four-space JSON:\n%s", postOutput)
+	}
+
+	option, err := OptionSet("app", "theme", "dark")
+	if err != nil {
+		t.Fatal(err)
+	}
+	optionOutput := captureStdout(t, option.Dump)
+	if !strings.Contains(optionOutput, "\n    \"group\": \"app\"") || strings.Contains(optionOutput, "\"meta\"") {
+		t.Fatalf("option dump is incorrect:\n%s", optionOutput)
+	}
+
+	user, err := CreateUser("dump-user", "dump@example.com", "secret-hash")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := user.SetMeta("role", "tester", MetaTypeString); err != nil {
+		t.Fatal(err)
+	}
+	userOutput := captureStdout(t, user.Dump)
+	if !strings.Contains(userOutput, "\n    \"user\": {") || !strings.Contains(userOutput, "\"role\": [") || strings.Contains(userOutput, "secret-hash") {
+		t.Fatalf("user dump is incorrect:\n%s", userOutput)
 	}
 }
 

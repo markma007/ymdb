@@ -21,7 +21,7 @@ type Post struct {
 	Content  string `json:"content"`
 	Mime     string `json:"mime"` // Representation of Content: text, html, markdown, etc.
 	Data     string `json:"data"`
-	Format   string `json:"format"` // Encoding of Data: text, json, or csv.
+	Format   string `json:"format"` // Encoding of Data: text, json, csv, or tabular.
 	// Relations
 	ParentID *uint `json:"parent_id,omitempty" gorm:"index:idx_post_siblings,priority:1"`
 	Parent   *Post `json:"-" gorm:"foreignKey:ParentID;constraint:OnUpdate:CASCADE,OnDelete:SET NULL"`
